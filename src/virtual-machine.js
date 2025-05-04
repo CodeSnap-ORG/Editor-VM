@@ -428,46 +428,58 @@ class VirtualMachine extends EventEmitter {
     }
 
     /**
-     * Load a Scratch project from a .sb, .sb2, .sb3 or json string.
-     * @param {string | object} input A json string, object, or ArrayBuffer representing the project to load.
+     * Load a Scratch project from a .sb, .sb2, .sb3 or JSON string.
+     * @param {string | object} input A JSON string, object, or ArrayBuffer representing the project to load.
      * @return {!Promise} Promise that resolves after targets are installed.
      */
-
-
     async loadProject () {
-            // tw: stop when loading new project
-        this.props.vm.quit();
+        try {
+            // Stop the current VM project
+            await this.props.vm.quit();
 
-        let input = this.props.projectData;
+            let input = this.props.projectData;
 
             // Check if the projectId is a number or numeric string
-        if ((typeof this.props.projectId === 'number') ||
-            (typeof this.props.projectId === 'string' && /^\d+$/.test(this.props.projectId))) {
-            try {
-                const response = await fetch(`https://block-compiler-codesnap.onrender.com/projects/${this.props.projectId}`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch project: ${response.statusText}`);
+            if (
+                typeof this.props.projectId === 'number' ||
+                (typeof this.props.projectId === 'string' && /^\d+$/.test(this.props.projectId))
+            ) {
+                try {
+                    const response = await fetch(`https://block-compiler-codesnap.onrender.com/projects/${this.props.projectId}`);
+
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch project: ${response.statusText}`);
+                    }
+
+                    // Adjust based on your project format: .sb3 files should use arrayBuffer
+                    input = await response.arrayBuffer();
+                } catch (e) {
+                    console.error('Error fetching project:', e);
+                    this.props.onError(e);
+                    return;
                 }
-                input = await response.text();
-            } catch (e) {
-                this.props.onError(e);
-                return;
             }
-        }
 
-        this.props.vm.loadProject(input)
-            .then(() => {
-                this.props.onLoadedProject(this.props.loadingState, this.props.canSave);
-                setTimeout(() => this.props.onSetProjectUnchanged());
+            // Load the project into the VM
+            await this.props.vm.loadProject(input);
 
-                if (!this.props.isStarted) {
-                    setTimeout(() => this.props.vm.renderer.draw());
-                }
-            })
-            .catch(e => {
-                this.props.onError(e);
+            // Notify that the project was successfully loaded
+            this.props.onLoadedProject(this.props.loadingState, this.props.canSave);
+
+            setTimeout(() => {
+                this.props.onSetProjectUnchanged();
             });
+
+            if (!this.props.isStarted) {
+                setTimeout(() => {
+                    this.props.vm.renderer.draw();
+                });
+            }
+        } catch (e) {
+            console.error('Error loading project:', e);
+            this.props.onError(e);
         }
+    }
 
     /**
      * Load a project from the Scratch web site, by ID.
